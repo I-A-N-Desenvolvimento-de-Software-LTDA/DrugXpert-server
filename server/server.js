@@ -11,6 +11,7 @@ import aws from "aws-sdk";
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import axios from "axios";
 
 // Get current file's directory
 const __filename = fileURLToPath(import.meta.url);
@@ -112,6 +113,23 @@ const generateUsername = async (email) => {
 
 }
 
+const validateCaptcha = async (captchaToken) => {
+    try {
+        const response = await axios.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            new URLSearchParams({
+                secret: process.env.CLOUDFLARE_SECRET_KEY,
+                response: captchaToken,
+            }),
+            { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+        );
+        return response.data.success;
+    } catch (error) {
+        console.error("CAPTCHA validation error:", error);
+        return false;
+    }
+};
+
 // upload image url route
 server.get('/get-upload-url', (req, res) => {
     generateUploadURL().then(url => res.status(200).json({ uploadURL: url }))
@@ -165,9 +183,12 @@ server.post("/signup", (req, res) => {
 
 })
 
-server.post("/signin", (req, res) => {
+server.post("/signin", async (req, res) => {
+    const { email, password, captchaToken } = req.body;
 
-    let { email, password } = req.body;
+    if (!captchaToken || !(await validateCaptcha(captchaToken))) {
+        return res.status(400).json({ error: "Invalid CAPTCHA" });
+    }
 
     User.findOne({ "personal_info.email": email })
     .then((user) => {

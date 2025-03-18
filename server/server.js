@@ -115,18 +115,32 @@ const generateUsername = async (email) => {
 
 const validateCaptcha = async (captchaToken) => {
     try {
+        const idempotencyKey = crypto.randomUUID(); // Generate a unique idempotency key
         const response = await axios.post(
             "https://challenges.cloudflare.com/turnstile/v0/siteverify",
             new URLSearchParams({
                 secret: process.env.CLOUDFLARE_SECRET_KEY,
                 response: captchaToken,
+                idempotency_key: idempotencyKey, // Include idempotency key
             }),
             { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
         );
-        return response.data.success;
+
+        if (response.data.success) {
+            return true;
+        } else {
+            console.error("CAPTCHA validation failed:", response.data["error-codes"]);
+            return {
+                success: false,
+                error: response.data["error-codes"] || ["unknown-error"],
+            };
+        }
     } catch (error) {
         console.error("CAPTCHA validation error:", error);
-        return false;
+        return {
+            success: false,
+            error: ["internal-error"],
+        };
     }
 };
 
